@@ -82,31 +82,35 @@ int main() {
     });
 
     struct pollfd fds[2];
-    fds[0].fd = pipe_stdout[0];
+    fds[0].fd = pipe_terminate_signal[0];
     fds[0].events = POLLIN;
-    fds[1].fd = pipe_terminate_signal[0];
+    fds[1].fd = pipe_stdout[0];
     fds[1].events = POLLIN;
 
     char buf[1000];
     while (true) {
       ::poll(fds, 2, -1);
       if (fds[0].revents & POLLIN) {
+        std::cerr << "DEBUG: ::poll() confirms it's time to terminate." << std::endl;
+        // The call to `::waitpid()` from the spawned thread has succeeded, the child is done, time to wrap up.
+        break;
+      } else if (fds[1].revents & POLLIN) {
+        std::cerr << "DEBUG: ::poll() confirms activity in stdout." << std::endl;
         ssize_t const n = ::read(pipe_stdout[0], buf, sizeof(buf) - 1);
         if (n < 0) {
+          std::cerr << "DEBUG: can not ::read() from stdout, terminating." << std::endl;
           // Assume that once the pipe can't be read from, the child process has died.
           break;
         } else if (n > 0) {
           buf[n] = '\0';
           std::cout << buf << std::flush;
         } else {
+          std::cerr << "DEBUG: ::read() from stdout returned zero, waiting." << std::endl;
           // Somehow this `::read()` is a non-blocking call.
           // Should not happen.
           // Won't hurt to sleep for a bit to not overload the CPU.
           std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-      } else if (fds[1].revents & POLLIN) {
-        // The call to `::waitpid()` from the spawned thread has succeeded, the child is done, time to wrap up.
-        break;
       }
     }
 
