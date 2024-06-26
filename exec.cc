@@ -73,6 +73,7 @@ int main() {
 
     std::thread waitpid_signaler_thread([&]() {
       ::waitpid(pid, NULL, 0);
+      std::cerr << "DEBUG: Waitpid done!" << std::endl;
       char c = '\n';
       if (::write(pipe_terminate_signal[1], &c, 1) != 1) {
         std::cerr << "FATAL: " << __LINE__ << std::endl;
