@@ -56,7 +56,7 @@ int main() {
     ::dup2(pipe_stdout[1], 1);
     ::close(pipe_stderr[0]);
     ::dup2(pipe_stderr[1], 2);
-    POPEN2_PASS_ARGS({"bash", "-c", "(echo foo; sleep 1; echo bar)"}, [&](char* const* argv_to_pass) {
+    POPEN2_PASS_ARGS({"bash", "-c", "(echo INIT; date; sleep 1; date; echo DONE)"}, [&](char* const* argv_to_pass) {
       int const r = ::execvp(argv_to_pass[0], argv_to_pass);
       std::cerr << "FATAL: " << __LINE__ << " R=" << r << ", errno=" << errno << std::endl;
       ::perror("execvp");
@@ -73,7 +73,6 @@ int main() {
 
     std::thread waitpid_signaler_thread([&]() {
       ::waitpid(pid, NULL, 0);
-      std::cerr << "DEBUG: Waitpid done!" << std::endl;
       char c = '\n';
       if (::write(pipe_terminate_signal[1], &c, 1) != 1) {
         std::cerr << "FATAL: " << __LINE__ << std::endl;
@@ -91,21 +90,17 @@ int main() {
     while (true) {
       ::poll(fds, 2, -1);
       if (fds[0].revents & POLLIN) {
-        std::cerr << "DEBUG: ::poll() confirms it's time to terminate." << std::endl;
         // The call to `::waitpid()` from the spawned thread has succeeded, the child is done, time to wrap up.
         break;
       } else if (fds[1].revents & POLLIN) {
-        std::cerr << "DEBUG: ::poll() confirms activity in stdout." << std::endl;
         ssize_t const n = ::read(pipe_stdout[0], buf, sizeof(buf) - 1);
         if (n < 0) {
-          std::cerr << "DEBUG: can not ::read() from stdout, terminating." << std::endl;
           // Assume that once the pipe can't be read from, the child process has died.
           break;
         } else if (n > 0) {
           buf[n] = '\0';
           std::cout << buf << std::flush;
         } else {
-          std::cerr << "DEBUG: ::read() from stdout returned zero, waiting." << std::endl;
           // Somehow this `::read()` is a non-blocking call.
           // Should not happen.
           // Won't hurt to sleep for a bit to not overload the CPU.
